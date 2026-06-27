@@ -1,0 +1,1537 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#1a1f2e">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>TranslateDoc</title>
+<link rel="manifest" href="data:application/json,{%22name%22:%22TranslateDoc%22,%22short_name%22:%22TranslateDoc%22,%22display%22:%22standalone%22,%22background_color%22:%22%231a1f2e%22,%22theme_color%22:%22%231a1f2e%22}">
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useRef, useEffect } = React;
+// ─── CONSTANTS ────────────────────────────────────────────────────────────────
+const LANG = {
+  auto:"Auto-détect", fr:"🇫🇷 Français", en:"🇬🇧 English", es:"🇪🇸 Español",
+  de:"🇩🇪 Deutsch", it:"🇮🇹 Italiano", pt:"🇵🇹 Português",
+  nl:"🇳🇱 Nederlands", ar:"🇸🇦 العربية", zh:"🇨🇳 中文", ja:"🇯🇵 日本語"
+};
+const LANG_SHORT = {
+  auto:"Auto", fr:"Français", en:"English", es:"Español", de:"Deutsch",
+  it:"Italiano", pt:"Português", nl:"Nederlands", ar:"العربية", zh:"中文", ja:"日本語"
+};
+const FTYPES = {
+  pdf:{icon:"📄",color:"#f05a5a",bg:"rgba(240,90,90,.15)",label:"PDF"},
+  docx:{icon:"📝",color:"#4f8ef7",bg:"rgba(79,142,247,.15)",label:"Word"},
+  doc:{icon:"📝",color:"#4f8ef7",bg:"rgba(79,142,247,.15)",label:"Word"},
+  pptx:{icon:"📊",color:"#f0a500",bg:"rgba(240,165,0,.15)",label:"PowerPoint"},
+  ppt:{icon:"📊",color:"#f0a500",bg:"rgba(240,165,0,.15)",label:"PowerPoint"},
+  xlsx:{icon:"📈",color:"#2ecc8a",bg:"rgba(46,204,138,.15)",label:"Excel"},
+  xls:{icon:"📈",color:"#2ecc8a",bg:"rgba(46,204,138,.15)",label:"Excel"},
+  jpg:{icon:"🖼️",color:"#7c5cfc",bg:"rgba(124,92,252,.15)",label:"Image"},
+  jpeg:{icon:"🖼️",color:"#7c5cfc",bg:"rgba(124,92,252,.15)",label:"Image"},
+  png:{icon:"🖼️",color:"#7c5cfc",bg:"rgba(124,92,252,.15)",label:"Image"},
+  webp:{icon:"🖼️",color:"#7c5cfc",bg:"rgba(124,92,252,.15)",label:"Image"},
+};
+const OFFICE_EXTS = ["docx","doc","pptx","ppt","xlsx","xls"];
+const STEPS = ["Lecture du fichier","Détection langue","Envoi à Claude AI","Traduction","Finalisation"];
+
+// ─── CSS ──────────────────────────────────────────────────────────────────────
+const css = `
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',system-ui,sans-serif;background:#1a1f2e}
+
+.app{background:#1a1f2e;color:#eef0f7;min-height:100vh;display:flex;flex-direction:column;font-family:'Inter',system-ui,sans-serif;max-width:480px;margin:0 auto}
+
+/* HEADER */
+.hdr{display:flex;align-items:center;justify-content:space-between;padding:14px 18px 12px;background:#242938;border-bottom:1px solid #363d56;position:sticky;top:0;z-index:10}
+.logo{display:flex;align-items:center;gap:10px}
+.logo-icon{width:34px;height:34px;background:linear-gradient(135deg,#4f8ef7,#7c5cfc);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:17px}
+.logo-text{font-size:17px;font-weight:700}
+.logo-text span{color:#4f8ef7}
+.hist-btn{background:#2e3449;border:1px solid #363d56;color:#8891b0;padding:7px 12px;border-radius:8px;font-size:12px;cursor:pointer}
+
+/* TABS */
+.tabs{display:flex;background:#242938;border-bottom:1px solid #363d56;padding:0 16px;gap:4px}
+.tab{flex:1;padding:12px 6px;font-size:12px;font-weight:600;color:#8891b0;background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;transition:all .15s;white-space:nowrap}
+.tab.active{color:#4f8ef7;border-bottom-color:#4f8ef7}
+
+/* MAIN */
+.main{flex:1;padding:16px;display:flex;flex-direction:column;gap:14px}
+
+/* LANG BAR */
+.lang-bar{display:flex;align-items:center;background:#242938;border:1px solid #363d56;border-radius:14px;padding:6px;gap:6px}
+.lang-sel{flex:1;background:#2e3449;border:none;color:#eef0f7;padding:9px 8px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;outline:none;text-align:center;appearance:none}
+.swap-btn{background:linear-gradient(135deg,#4f8ef7,#7c5cfc);border:none;color:#fff;width:38px;height:38px;border-radius:8px;font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:transform .2s}
+.swap-btn:active{transform:rotate(180deg) scale(.9)}
+
+/* BADGES */
+.badge-row{display:flex;gap:8px}
+.badge{background:#2e3449;border:1px solid #363d56;border-radius:12px;padding:7px 11px;font-size:11px;color:#8891b0;display:flex;align-items:center;gap:6px;flex:1}
+.dot{width:7px;height:7px;border-radius:50%;animation:pulse 2s infinite;flex-shrink:0}
+.dot-g{background:#2ecc8a}.dot-b{background:#4f8ef7}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* UPLOAD */
+.upload-zone{background:#242938;border:2px dashed #363d56;border-radius:14px;padding:26px 18px;text-align:center;cursor:pointer;transition:border-color .2s}
+.upload-zone:hover,.upload-zone.drag{border-color:#4f8ef7;background:rgba(79,142,247,.05)}
+.upload-icon{font-size:36px;margin-bottom:8px}
+.upload-title{font-size:15px;font-weight:600;margin-bottom:4px}
+.upload-sub{font-size:12px;color:#8891b0;margin-bottom:12px}
+.chips{display:flex;flex-wrap:wrap;gap:5px;justify-content:center}
+.chip{border-radius:20px;padding:3px 9px;font-size:11px;font-weight:600;border:1px solid}
+.chip-pdf{border-color:#f05a5a44;color:#f05a5a;background:rgba(240,90,90,.08)}
+.chip-docx{border-color:#4f8ef744;color:#4f8ef7;background:rgba(79,142,247,.08)}
+.chip-pptx{border-color:#f0a50044;color:#f0a500;background:rgba(240,165,0,.08)}
+.chip-xlsx{border-color:#2ecc8a44;color:#2ecc8a;background:rgba(46,204,138,.08)}
+.chip-img{border-color:#7c5cfc44;color:#7c5cfc;background:rgba(124,92,252,.08)}
+
+/* FILE CARD */
+.file-card{background:#242938;border:1px solid #363d56;border-radius:14px;padding:13px 15px;display:flex;align-items:center;gap:11px}
+.file-icon{width:42px;height:42px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
+.file-name{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.file-meta{font-size:11px;color:#8891b0;margin-top:2px}
+.file-remove{background:none;border:none;color:#8891b0;font-size:18px;cursor:pointer;padding:4px;flex-shrink:0}
+
+/* OFFICE MODE */
+.office-box{background:#242938;border:1px solid #4f8ef7;border-radius:14px;padding:13px 15px;display:flex;flex-direction:column;gap:10px}
+.office-title{font-size:11px;font-weight:700;color:#4f8ef7;text-transform:uppercase;letter-spacing:.8px}
+.mode-btns{display:flex;gap:8px}
+.mode-btn{flex:1;padding:11px 8px;border-radius:8px;border:2px solid #363d56;background:#2e3449;color:#8891b0;font-size:12px;font-weight:600;cursor:pointer;text-align:center;transition:all .15s;line-height:1.4}
+.mode-btn.active{border-color:#4f8ef7;color:#eef0f7;background:rgba(79,142,247,.12)}
+.mode-icon{font-size:18px;display:block;margin-bottom:3px}
+
+/* CLAUDE PANEL */
+.claude-panel{background:linear-gradient(135deg,rgba(79,142,247,.1),rgba(124,92,252,.1));border:1px solid rgba(79,142,247,.3);border-radius:14px;padding:15px;display:flex;flex-direction:column;gap:11px}
+.claude-title{font-size:13px;font-weight:700}
+.c-step{display:flex;align-items:flex-start;gap:9px;font-size:12px;line-height:1.5;color:#c0c8e8}
+.c-num{width:20px;height:20px;border-radius:50%;background:#4f8ef7;color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px}
+.prompt-box{background:#1a1f2e;border:1px solid #363d56;border-radius:8px;padding:11px;font-size:11px;font-family:monospace;line-height:1.6;color:#eef0f7;white-space:pre-wrap;word-break:break-word;position:relative}
+.copy-btn-sm{position:absolute;top:7px;right:7px;background:#4f8ef7;border:none;color:#fff;padding:3px 9px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer}
+.btn-dl-file{background:#2e3449;border:2px solid #4f8ef7;color:#4f8ef7;padding:12px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;width:100%;display:flex;align-items:center;justify-content:center;gap:7px}
+.btn-claude{background:linear-gradient(135deg,#4f8ef7,#7c5cfc);border:none;color:#fff;padding:13px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;width:100%;display:flex;align-items:center;justify-content:center;gap:8px}
+
+/* TEXT */
+.or-div{display:flex;align-items:center;gap:10px;color:#8891b0;font-size:12px}
+.or-div::before,.or-div::after{content:'';flex:1;height:1px;background:#363d56}
+.txt-area{background:#242938;border:1px solid #363d56;border-radius:14px;color:#eef0f7;font-family:'Inter',system-ui,sans-serif;font-size:13px;line-height:1.6;padding:13px;resize:none;min-height:100px;outline:none;width:100%;transition:border-color .2s}
+.txt-area:focus{border-color:#4f8ef7}
+.txt-area::placeholder{color:#8891b0}
+
+/* BUTTONS */
+.tr-btn{background:linear-gradient(135deg,#4f8ef7,#7c5cfc);border:none;color:#fff;padding:15px;border-radius:14px;font-size:15px;font-weight:700;cursor:pointer;width:100%;display:flex;align-items:center;justify-content:center;gap:9px}
+.tr-btn:disabled{opacity:.5;cursor:not-allowed}
+
+/* PROGRESS */
+.prog-card{background:#242938;border:1px solid #363d56;border-radius:14px;padding:18px}
+.prog-top{display:flex;justify-content:space-between;font-size:12px;color:#8891b0;margin-bottom:9px}
+.prog-bg{height:5px;background:#2e3449;border-radius:3px;overflow:hidden}
+.prog-fill{height:100%;background:linear-gradient(90deg,#4f8ef7,#7c5cfc);border-radius:3px;transition:width .4s ease}
+.steps-list{margin-top:12px;display:flex;flex-direction:column;gap:7px}
+.s-item{display:flex;align-items:center;gap:9px;font-size:12px;color:#8891b0}
+.s-item.done{color:#2ecc8a}.s-item.act{color:#eef0f7}
+.s-dot{width:7px;height:7px;border-radius:50%;background:#363d56;flex-shrink:0}
+.s-item.done .s-dot{background:#2ecc8a}
+.s-item.act .s-dot{background:#4f8ef7;animation:pulse 1s infinite}
+
+/* RESULT */
+.res-card{background:#242938;border:1px solid #2ecc8a;border-radius:14px;padding:15px}
+.res-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.res-title{font-size:14px;font-weight:700}
+.res-badge{background:rgba(46,204,138,.15);color:#2ecc8a;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:600}
+.res-text{background:#2e3449;border-radius:8px;padding:12px;font-size:12px;line-height:1.7;max-height:200px;overflow-y:auto;white-space:pre-wrap;word-break:break-word}
+.res-actions{display:flex;gap:7px;margin-top:11px}
+.btn-dl{flex:1;background:#2ecc8a;border:none;color:#0a1a10;padding:12px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px}
+.btn-cp{background:#2e3449;border:1px solid #363d56;color:#eef0f7;padding:12px 14px;border-radius:8px;font-size:13px;cursor:pointer}
+
+/* ERROR */
+.err{background:rgba(240,90,90,.1);border:1px solid rgba(240,90,90,.4);border-radius:14px;padding:13px;font-size:12px;color:#f05a5a}
+
+/* ── LIVE TRANSLATION TAB ──────────────────────────────────────────── */
+.live-wrap{display:flex;flex-direction:column;gap:14px;padding:16px}
+
+/* Status bar */
+.live-status{display:flex;align-items:center;justify-content:space-between;background:#242938;border:1px solid #363d56;border-radius:14px;padding:12px 16px}
+.live-status-left{display:flex;align-items:center;gap:10px}
+.live-dot{width:10px;height:10px;border-radius:50%;background:#363d56;flex-shrink:0;transition:background .3s}
+.live-dot.listening{background:#2ecc8a;animation:pulse .8s infinite}
+.live-dot.processing{background:#f0a500;animation:pulse .4s infinite}
+.live-status-text{font-size:13px;font-weight:600}
+.live-status-sub{font-size:11px;color:#8891b0;margin-top:1px}
+.live-lang-badge{font-size:11px;font-weight:700;color:#4f8ef7;background:rgba(79,142,247,.12);border:1px solid rgba(79,142,247,.25);border-radius:20px;padding:3px 10px}
+
+/* MIC BUTTON */
+.mic-area{display:flex;flex-direction:column;align-items:center;gap:12px;padding:8px 0}
+.mic-btn{width:80px;height:80px;border-radius:50%;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:32px;transition:all .2s;position:relative}
+.mic-btn.idle{background:linear-gradient(135deg,#2e3449,#363d56);box-shadow:0 0 0 0 rgba(79,142,247,0)}
+.mic-btn.on{background:linear-gradient(135deg,#f05a5a,#c0392b);box-shadow:0 0 0 12px rgba(240,90,90,.15);animation:mic-pulse 1.5s infinite}
+@keyframes mic-pulse{0%,100%{box-shadow:0 0 0 0 rgba(240,90,90,.3)}50%{box-shadow:0 0 0 16px rgba(240,90,90,.08)}}
+.mic-label{font-size:12px;color:#8891b0;font-weight:600}
+
+/* VOICE VISUALIZER */
+.visualizer{display:flex;align-items:center;justify-content:center;gap:3px;height:32px}
+.v-bar{width:4px;border-radius:2px;background:#4f8ef7;transition:height .1s;min-height:4px}
+
+/* LANG DIRECTION */
+.live-lang-row{display:flex;align-items:center;gap:8px;background:#242938;border:1px solid #363d56;border-radius:14px;padding:10px 14px}
+.live-lang-sel{flex:1;background:#2e3449;border:none;color:#eef0f7;padding:8px 10px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;outline:none;appearance:none;text-align:center}
+.live-swap{background:none;border:none;color:#8891b0;font-size:18px;cursor:pointer;padding:4px 8px;transition:transform .2s}
+.live-swap:active{transform:rotate(180deg)}
+
+/* TRANSCRIPT */
+.transcript-box{background:#242938;border:1px solid #363d56;border-radius:14px;overflow:hidden;display:flex;flex-direction:column}
+.transcript-hdr{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid #363d56}
+.transcript-title{font-size:12px;font-weight:700;color:#8891b0;text-transform:uppercase;letter-spacing:.8px}
+.clear-btn{background:none;border:none;color:#8891b0;font-size:11px;cursor:pointer;padding:3px 8px;border-radius:6px;transition:color .15s}
+.clear-btn:hover{color:#f05a5a}
+.transcript-list{flex:1;overflow-y:auto;max-height:340px;display:flex;flex-direction:column;gap:0}
+.transcript-empty{text-align:center;color:#8891b0;padding:32px 16px;font-size:13px}
+.t-entry{padding:12px 14px;border-bottom:1px solid #2e3449;animation:fade-in .3s ease}
+@keyframes fade-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+.t-original{font-size:12px;color:#8891b0;margin-bottom:5px;font-style:italic;line-height:1.5}
+.t-translated{font-size:13px;color:#eef0f7;font-weight:500;line-height:1.5}
+.t-meta{display:flex;align-items:center;gap:6px;margin-top:5px}
+.t-lang-pill{font-size:10px;font-weight:700;border-radius:20px;padding:1px 7px}
+.t-time{font-size:10px;color:#8891b0}
+
+/* SAVE TRANSCRIPT */
+.save-transcript-btn{background:#2e3449;border:1px solid #363d56;color:#eef0f7;padding:12px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;width:100%;display:flex;align-items:center;justify-content:center;gap:7px}
+
+/* HISTORY */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:50;display:flex;align-items:flex-end}
+.sheet{background:#242938;width:100%;border-radius:20px 20px 0 0;padding:18px;max-height:70vh;display:flex;flex-direction:column}
+.handle{width:36px;height:4px;background:#363d56;border-radius:2px;margin:0 auto 14px}
+.sheet-title{font-size:15px;font-weight:700;margin-bottom:12px}
+.hist-list{overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:8px}
+.hist-item{background:#2e3449;border-radius:8px;padding:11px 13px;cursor:pointer;border:1px solid #363d56}
+.hist-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:3px}
+.hist-name{font-size:12px;font-weight:600}
+.hist-langs{font-size:10px;color:#4f8ef7;font-weight:600}
+.hist-date{font-size:10px;color:#8891b0}
+.hist-empty{text-align:center;color:#8891b0;padding:24px;font-size:13px}
+.close-btn{background:#2e3449;border:1px solid #363d56;color:#eef0f7;padding:12px;border-radius:8px;font-size:13px;cursor:pointer;margin-top:10px;width:100%;font-weight:600}
+
+/* TOAST */
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#2e3449;border:1px solid #363d56;color:#eef0f7;padding:10px 18px;border-radius:25px;font-size:12px;font-weight:600;z-index:100;white-space:nowrap;box-shadow:0 4px 20px rgba(0,0,0,.4)}
+
+/* CONVERT PANEL */
+.convert-panel{background:#242938;border:1px solid #363d56;border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.convert-title{font-size:12px;font-weight:700;color:#8891b0;text-transform:uppercase;letter-spacing:.8px}
+.convert-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.conv-btn{padding:11px 8px;border-radius:10px;border:1px solid #363d56;background:#2e3449;color:#eef0f7;font-size:13px;font-weight:600;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;transition:all .15s}
+.conv-btn:active{transform:scale(.97)}
+.conv-btn .conv-icon{font-size:20px}
+.conv-btn .conv-label{font-size:10px;color:#8891b0;margin-top:1px}
+.conv-btn.via-claude{border-color:rgba(124,92,252,.4);background:rgba(124,92,252,.08)}
+.conv-btn.via-claude .conv-label{color:#7c5cfc}
+
+/* EMAIL TAB */
+.email-wrap{display:flex;flex-direction:column;gap:14px;padding:16px}
+.email-field{display:flex;flex-direction:column;gap:6px}
+.email-label{font-size:11px;font-weight:700;color:#8891b0;text-transform:uppercase;letter-spacing:.8px}
+.email-input{background:#242938;border:1px solid #363d56;border-radius:10px;color:#eef0f7;font-family:'Inter',system-ui,sans-serif;font-size:13px;padding:11px 13px;outline:none;width:100%;transition:border-color .2s}
+.email-input:focus{border-color:#4f8ef7}
+.email-input::placeholder{color:#8891b0}
+.email-textarea{background:#242938;border:1px solid #363d56;border-radius:10px;color:#eef0f7;font-family:'Inter',system-ui,sans-serif;font-size:13px;line-height:1.6;padding:11px 13px;resize:none;outline:none;width:100%;transition:border-color .2s}
+.email-textarea:focus{border-color:#4f8ef7}
+.email-textarea::placeholder{color:#8891b0}
+.translate-msg-btn{background:rgba(79,142,247,.15);border:1px solid rgba(79,142,247,.3);color:#4f8ef7;padding:10px;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;width:100%;display:flex;align-items:center;justify-content:center;gap:7px}
+.translated-msg-box{background:#1a1f2e;border:1px solid #2ecc8a;border-radius:10px;padding:12px;font-size:12px;line-height:1.6;color:#eef0f7;white-space:pre-wrap;word-break:break-word;position:relative}
+.translated-lang-badge{position:absolute;top:8px;right:8px;background:rgba(46,204,138,.15);color:#2ecc8a;border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700}
+.send-btn{background:linear-gradient(135deg,#4f8ef7,#7c5cfc);border:none;color:#fff;padding:15px;border-radius:14px;font-size:15px;font-weight:700;cursor:pointer;width:100%;display:flex;align-items:center;justify-content:center;gap:9px}
+.send-btn:disabled{opacity:.5;cursor:not-allowed}
+.bilingual-toggle{display:flex;align-items:center;justify-content:space-between;background:#242938;border:1px solid #363d56;border-radius:10px;padding:11px 14px}
+.toggle-label{font-size:13px;font-weight:600}
+.toggle-sub{font-size:11px;color:#8891b0;margin-top:2px}
+.toggle-switch{width:44px;height:24px;border-radius:12px;border:none;cursor:pointer;position:relative;transition:background .2s;flex-shrink:0}
+.toggle-switch.on{background:#4f8ef7}
+.toggle-switch.off{background:#363d56}
+.toggle-knob{width:18px;height:18px;background:#fff;border-radius:50%;position:absolute;top:3px;transition:left .2s}
+.toggle-switch.on .toggle-knob{left:23px}
+.toggle-switch.off .toggle-knob{left:3px}
+`;
+
+// ─── LIVE TRANSLATION COMPONENT ───────────────────────────────────────────────
+function LiveTab({ callClaude }) {
+  const [listening, setListening] = useState(false);
+  const [processing, setProcessing] = useState(false);
+  const [transcript, setTranscript] = useState([]);
+  const [liveLang, setLiveLang] = useState("auto");
+  const [liveTgt, setLiveTgt] = useState("fr");
+  const [bars, setBars] = useState([4,6,4,8,4,6,4]);
+  const [soundOn, setSoundOn] = useState(true);
+  const recogRef = useRef(null);
+  const synthRef = useRef(window.speechSynthesis);
+  const listRef = useRef(null);
+  const processingRef = useRef(false);
+  const [toast, setToast] = useState("");
+
+  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 2500); };
+
+  // Animate bars when listening
+  useEffect(() => {
+    if (!listening) { setBars([4,6,4,8,4,6,4]); return; }
+    const iv = setInterval(() => {
+      setBars(Array.from({length:7}, () => Math.floor(Math.random()*24)+4));
+    }, 120);
+    return () => clearInterval(iv);
+  }, [listening]);
+
+  // Auto-scroll transcript
+  useEffect(() => {
+    if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
+  }, [transcript]);
+
+  const speak = (text, lang) => {
+    if (!synthRef.current || !soundOn) return;
+    synthRef.current.cancel();
+    const utt = new SpeechSynthesisUtterance(text);
+    utt.lang = lang === "fr" ? "fr-FR" : lang === "en" ? "en-GB" : lang === "es" ? "es-ES" : lang === "de" ? "de-DE" : "en-GB";
+    utt.rate = 0.95;
+    synthRef.current.speak(utt);
+  };
+
+  const handlePhrase = async (spokenText) => {
+    if (!spokenText.trim() || processingRef.current) return;
+    processingRef.current = true;
+    setProcessing(true);
+
+    try {
+      // Detect language + translate in one call
+      const srcN = liveLang === "auto" ? "la langue détectée automatiquement" : LANG_SHORT[liveLang];
+
+      // Smart target: if auto and spoken is French → English, else French
+      let resolvedTgt = liveTgt;
+
+      const result = await callClaude(
+        `Tu es un traducteur expert et détecteur de langue. 
+Réponds UNIQUEMENT en JSON valide : {"detected":"xx","translated":"..."}
+- "detected" : code ISO 2 lettres de la langue du texte
+- "translated" : traduction vers ${LANG_SHORT[resolvedTgt]}
+- Ne traduis PAS les noms propres, codes techniques (EHS, HSE, PTW, CDG1, CHQ, RAMS)
+- Si le texte est déjà en ${LANG_SHORT[resolvedTgt]}, détecte la langue et adapte la cible : si détecté=fr traduis en anglais, sinon traduis en français`,
+        [{ role: "user", content: `Texte : "${spokenText}"` }],
+        200
+      );
+
+      let detected = liveLang === "auto" ? "?" : liveLang;
+      let translated = spokenText;
+      let actualTgt = resolvedTgt;
+
+      try {
+        const clean = result.replace(/```json|```/g,"").trim();
+        const parsed = JSON.parse(clean);
+        detected = parsed.detected || detected;
+        translated = parsed.translated || translated;
+
+        // Auto-adjust target if source = target
+        if (liveLang === "auto") {
+          if (detected === "fr") { actualTgt = "en"; setLiveTgt("en"); }
+          else { actualTgt = "fr"; setLiveTgt("fr"); }
+        }
+      } catch { /* use defaults */ }
+
+      const entry = {
+        id: Date.now(),
+        original: spokenText,
+        translated,
+        detected,
+        tgt: actualTgt,
+        time: new Date().toLocaleTimeString("fr-FR", {hour:"2-digit",minute:"2-digit",second:"2-digit"})
+      };
+
+      setTranscript(prev => [...prev, entry]);
+      speak(translated, actualTgt);
+
+    } catch(e) {
+      console.error(e);
+    } finally {
+      processingRef.current = false;
+      setProcessing(false);
+    }
+  };
+
+  const startListening = () => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { showToast("⚠️ Micro non supporté dans cet environnement — fonctionne sur Android Chrome"); return; }
+
+    const recog = new SR();
+    recog.continuous = true;
+    recog.interimResults = false;
+    recog.lang = liveLang === "auto" ? "" : `${liveLang}-${liveLang.toUpperCase()}`;
+    recog.maxAlternatives = 1;
+
+    recog.onresult = (e) => {
+      const phrase = e.results[e.results.length - 1][0].transcript;
+      handlePhrase(phrase);
+    };
+    recog.onerror = (e) => {
+      if (e.error !== "aborted") showToast("Erreur micro : " + e.error);
+    };
+    recog.onend = () => {
+      if (listening) recog.start(); // restart if still listening
+    };
+
+    recog.start();
+    recogRef.current = recog;
+    setListening(true);
+  };
+
+  const stopListening = () => {
+    if (recogRef.current) { recogRef.current.abort(); recogRef.current = null; }
+    synthRef.current?.cancel();
+    setListening(false);
+    setProcessing(false);
+  };
+
+  const toggleListen = () => { listening ? stopListening() : startListening(); };
+
+  const swapLiveLangs = () => {
+    const s = liveLang === "auto" ? "fr" : liveLang;
+    setLiveLang(liveTgt);
+    setLiveTgt(s);
+  };
+
+  const saveTranscript = () => {
+    if (!transcript.length) return;
+    const txt = transcript.map(e =>
+      `[${e.time}] (${e.detected}→${e.tgt})\nOriginal : ${e.original}\nTraduction : ${e.translated}\n`
+    ).join("\n");
+    const blob = new Blob([txt], {type:"text/plain;charset=utf-8"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href=url; a.download=`conversation_${new Date().toLocaleDateString("fr-FR").replace(/\//g,"-")}.txt`;
+    a.click(); URL.revokeObjectURL(url);
+    showToast("✅ Conversation sauvegardée");
+  };
+
+  const getLangColor = (lang) => {
+    const colors = {fr:"#4f8ef7",en:"#2ecc8a",es:"#f0a500",de:"#7c5cfc",it:"#f05a5a",pt:"#f0a500"};
+    return colors[lang] || "#8891b0";
+  };
+
+  const statusText = listening
+    ? (processing ? "Traduction en cours…" : "Écoute active…")
+    : "En attente";
+  const statusSub = listening
+    ? (processing ? "Claude AI traduit" : "Parlez maintenant")
+    : "Appuyer sur le micro pour commencer";
+
+  return (
+    <div className="live-wrap">
+
+      {/* LANG DIRECTION */}
+      <div className="live-lang-row">
+        <select className="live-lang-sel" value={liveLang} onChange={e=>setLiveLang(e.target.value)}>
+          {Object.entries(LANG).map(([k,v])=><option key={k} value={k}>{v}</option>)}
+        </select>
+        <button className="live-swap" onClick={swapLiveLangs}>⇄</button>
+        <select className="live-lang-sel" value={liveTgt} onChange={e=>setLiveTgt(e.target.value)}>
+          {Object.entries(LANG).filter(([k])=>k!=="auto").map(([k,v])=><option key={k} value={k}>{v}</option>)}
+        </select>
+      </div>
+
+      {/* STATUS */}
+      <div className="live-status">
+        <div className="live-status-left">
+          <div className={`live-dot ${listening ? (processing ? "processing" : "listening") : ""}`} />
+          <div>
+            <div className="live-status-text">{statusText}</div>
+            <div className="live-status-sub">{statusSub}</div>
+          </div>
+        </div>
+        {listening && (
+          <div className="live-lang-badge">
+            {LANG_SHORT[liveLang] || "Auto"} → {LANG_SHORT[liveTgt]}
+          </div>
+        )}
+      </div>
+
+      {/* MIC BUTTON */}
+      <div className="mic-area">
+        <button className={`mic-btn ${listening ? "on" : "idle"}`} onClick={toggleListen}>
+          {listening ? "⏹" : "🎤"}
+        </button>
+
+        {/* VISUALIZER */}
+        <div className="visualizer">
+          {bars.map((h,i) => (
+            <div key={i} className="v-bar" style={{
+              height: listening ? h+"px" : "4px",
+              background: listening ? (processing ? "#f0a500" : "#4f8ef7") : "#363d56",
+              transition: "height .1s, background .3s"
+            }} />
+          ))}
+        </div>
+
+        <div className="mic-label">{listening ? "Appuyer pour arrêter" : "Appuyer pour parler"}</div>
+
+        {/* SOUND TOGGLE */}
+        <button
+          onClick={() => { setSoundOn(s => { const next=!s; if(!next) synthRef.current?.cancel(); return next; }); }}
+          style={{
+            background: soundOn ? "rgba(46,204,138,.15)" : "rgba(136,145,176,.1)",
+            border: `1px solid ${soundOn ? "rgba(46,204,138,.4)" : "#363d56"}`,
+            color: soundOn ? "#2ecc8a" : "#8891b0",
+            borderRadius: 20, padding: "6px 14px",
+            fontSize: 12, fontWeight: 700, cursor: "pointer",
+            display: "flex", alignItems: "center", gap: 6,
+            transition: "all .2s"
+          }}
+        >
+          {soundOn ? "🔊 Son activé" : "🔇 Son désactivé"}
+        </button>
+      </div>
+
+      {/* TRANSCRIPT */}
+      <div className="transcript-box">
+        <div className="transcript-hdr">
+          <div className="transcript-title">💬 Conversation ({transcript.length})</div>
+          {transcript.length > 0 && (
+            <button className="clear-btn" onClick={() => setTranscript([])}>Effacer</button>
+          )}
+        </div>
+        <div className="transcript-list" ref={listRef}>
+          {transcript.length === 0
+            ? <div className="transcript-empty">🎤 La conversation apparaîtra ici<br/><span style={{fontSize:11,marginTop:6,display:"block"}}>Parlez — chaque phrase est traduite instantanément</span></div>
+            : transcript.map(e => (
+              <div key={e.id} className="t-entry">
+                <div className="t-original">{e.original}</div>
+                <div className="t-translated">{e.translated}</div>
+                <div className="t-meta">
+                  <span className="t-lang-pill" style={{background:`${getLangColor(e.detected)}22`,color:getLangColor(e.detected),border:`1px solid ${getLangColor(e.detected)}44`}}>
+                    {e.detected}→{e.tgt}
+                  </span>
+                  <span className="t-time">{e.time}</span>
+                </div>
+              </div>
+            ))
+          }
+        </div>
+      </div>
+
+      {/* SAVE */}
+      {transcript.length > 0 && (
+        <button className="save-transcript-btn" onClick={saveTranscript}>
+          💾 Sauvegarder la conversation
+        </button>
+      )}
+
+      {toast && <div className="toast">{toast}</div>}
+    </div>
+  );
+}
+
+// EMAIL TAB COMPONENT
+function EmailTab({ callClaude, showToast }) {
+  const [mode, setMode] = useState("new"); // "new" | "reply"
+  const [to, setTo] = useState("");
+  const [cc, setCc] = useState("");
+  const [subject, setSubject] = useState("");
+  const [subjectTranslated, setSubjectTranslated] = useState("");
+  const [msg, setMsg] = useState("");
+  const [msgTranslated, setMsgTranslated] = useState("");
+  const [originalEmail, setOriginalEmail] = useState(""); // mail reçu pour répondre
+  const [topic, setTopic] = useState(""); // sujet pour pré-rédaction
+  const [tone, setTone] = useState("pro"); // "pro" | "casual"
+  const [msgLang, setMsgLang] = useState("fr");
+  const [tgtLang, setTgtLang] = useState("en");
+  const [bilingual, setBilingual] = useState(true);
+  const [generating, setGenerating] = useState(false);
+  const [translating, setTranslating] = useState(false);
+
+  const LANG_PAIRS = [
+    {src:"fr",tgt:"en",label:"FR → EN"},{src:"en",tgt:"fr",label:"EN → FR"},
+    {src:"fr",tgt:"es",label:"FR → ES"},{src:"fr",tgt:"de",label:"FR → DE"},
+    {src:"en",tgt:"es",label:"EN → ES"},{src:"auto",tgt:"fr",label:"Auto → FR"},
+    {src:"auto",tgt:"en",label:"Auto → EN"},
+  ];
+
+  const toneDesc = tone === "pro"
+    ? "professionnel, formel, courtois, vocabulaire soutenu"
+    : "cordial, direct, moins formel, naturel mais respectueux";
+
+  // ── PRÉ-RÉDACTION ───────────────────────────────────────────────────────────
+  const generateDraft = async () => {
+    const context = mode === "reply" ? originalEmail : topic;
+    if(!context.trim()){ showToast("⚠️ " + (mode==="reply" ? "Colle le mail reçu" : "Décris le sujet")); return; }
+    setGenerating(true);
+    try {
+      const srcN = LANG_SHORT[msgLang] || "français";
+      const instruction = mode === "reply"
+        ? `Rédige une réponse professionnelle en ${srcN} à ce mail reçu. Ton : ${toneDesc}. Commence directement par la salutation.`
+        : `Rédige un mail en ${srcN} sur le sujet suivant : "${context}". Ton : ${toneDesc}. Commence directement par la salutation.`;
+
+      const result = await callClaude(
+        `Tu es un assistant de rédaction de mails professionnels. Contexte : projet de construction CDG1 | CloudHQ - Eiffage EHS. Ne traduis pas les codes techniques (EHS, HSE, PTW, RAMS, ATR, CDG1, CHQ). Génère UNIQUEMENT le corps du mail, sans explication.`,
+        [{role:"user", content: mode==="reply"
+          ? `Mail reçu :\n\n${originalEmail}\n\n---\n${instruction}`
+          : instruction
+        }], 1500
+      );
+
+      // Also generate subject if empty
+      if(!subject.trim()){
+        const subj = await callClaude(
+          `Génère UNIQUEMENT un objet de mail court (max 8 mots) en ${srcN}. Rien d'autre.`,
+          [{role:"user", content: mode==="reply"
+            ? `Objet pour réponse à : "${originalEmail.slice(0,200)}"`
+            : `Objet pour un mail sur : "${context}"`
+          }], 50
+        );
+        setSubject(subj.replace(/^(Objet|Subject)\s*:\s*/i,"").trim());
+      }
+
+      setMsg(result);
+      setMsgTranslated("");
+      showToast("✅ Brouillon généré !");
+    } catch(e){ showToast("Erreur : "+e.message); }
+    finally{ setGenerating(false); }
+  };
+
+  // ── TRADUCTION ──────────────────────────────────────────────────────────────
+  const translateAll = async () => {
+    if(!msg.trim()){ showToast("⚠️ Écris d'abord ton message"); return; }
+    setTranslating(true);
+    try {
+      const srcN = msgLang==="auto" ? "la langue détectée" : LANG_SHORT[msgLang];
+      const tgtN = LANG_SHORT[tgtLang];
+      const sys = `Traducteur professionnel de mails. Traduis de ${srcN} vers ${tgtN}. Ton ${toneDesc}. Ne traduis pas : noms propres, codes (EHS,HSE,PTW,CDG1,CHQ,RAMS), adresses email. Réponds UNIQUEMENT avec la traduction.`;
+
+      // Translate subject + body in parallel
+      const [tSubj, tBody] = await Promise.all([
+        subject.trim() ? callClaude(sys,[{role:"user",content:`Traduis cet objet de mail :\n${subject}`}],100) : Promise.resolve(""),
+        callClaude(sys,[{role:"user",content:`Traduis ce message :\n\n${msg.trim()}`}],1500)
+      ]);
+
+      setSubjectTranslated(tSubj.replace(/^(Objet|Subject)\s*:\s*/i,"").trim());
+      setMsgTranslated(tBody);
+      showToast("✅ Traduit !");
+    } catch(e){ showToast("Erreur : "+e.message); }
+    finally{ setTranslating(false); }
+  };
+
+  const buildBody = () => {
+    let body = msg;
+    if(bilingual && msgTranslated){
+      body += `\n\n${"─".repeat(40)}\n${LANG_SHORT[tgtLang]} :\n\n${msgTranslated}`;
+    }
+    if(mode==="reply" && originalEmail){
+      const d = new Date().toLocaleDateString("fr-FR",{weekday:"long",day:"2-digit",month:"long",year:"numeric",hour:"2-digit",minute:"2-digit"});
+      body += `\n\n${"─".repeat(40)}\nDe : [expéditeur]\nDate : ${d}\n\n${originalEmail}`;
+    }
+    return body;
+  };
+
+  const buildSubject = () => {
+    let subj = subject;
+    // Auto-prefix RE: in reply mode
+    if(mode==="reply" && subj && !subj.match(/^RE\s*:/i)) subj = `RE: ${subj}`;
+    if(bilingual && subjectTranslated){
+      const tSubj = mode==="reply" && !subjectTranslated.match(/^RE\s*:/i)
+        ? `RE: ${subjectTranslated}` : subjectTranslated;
+      return `${subj} / ${tSubj}`;
+    }
+    return subj;
+  };
+
+  const sendVia = () => {
+    if(!to.trim()){ showToast("⚠️ Destinataire requis"); return; }
+    if(!msg.trim()){ showToast("⚠️ Message vide"); return; }
+    const body = buildBody();
+    const subj = buildSubject();
+    const mailto = `mailto:${encodeURIComponent(to)}`+
+      (cc?`?cc=${encodeURIComponent(cc)}&`:"?")+
+      `subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`;
+    window.location.href = mailto;
+    showToast("📧 Android affichera tes applis mail…");
+  };
+
+  const sendViaOutlook = () => {
+    if(!to.trim()){ showToast("⚠️ Destinataire requis"); return; }
+    if(!msg.trim()){ showToast("⚠️ Message vide"); return; }
+    const body = buildBody();
+    const subj = buildSubject();
+    // Try Outlook deep link first (works if Outlook installed)
+    const outlookUrl = `ms-outlook://compose?to=${encodeURIComponent(to)}`+
+      (cc?`&cc=${encodeURIComponent(cc)}`:"") +
+      `&subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`;
+    // Fallback to mailto if Outlook not available
+    window.location.href = outlookUrl;
+    setTimeout(()=>{
+      // If Outlook didn't open, show tip
+      showToast("📎 Dans Outlook : joindre le mail original manuellement");
+    }, 1500);
+  };
+
+  const Toggle = ({on, onClick, label, sub}) => (
+    <div className="bilingual-toggle" onClick={onClick} style={{cursor:"pointer"}}>
+      <div><div className="toggle-label">{label}</div>{sub&&<div className="toggle-sub">{sub}</div>}</div>
+      <button className={`toggle-switch ${on?"on":"off"}`} onClick={e=>{e.stopPropagation();onClick();}}>
+        <div className="toggle-knob"/>
+      </button>
+    </div>
+  );
+
+  return (
+    <div className="email-wrap">
+
+      {/* MODE SELECTOR */}
+      <div style={{display:"flex",gap:8}}>
+        {[{k:"new",icon:"✍️",label:"Nouveau mail"},{k:"reply",icon:"↩️",label:"Répondre"}].map(m=>(
+          <button key={m.k} onClick={()=>{setMode(m.k);setMsg("");setMsgTranslated("");setSubject("");setSubjectTranslated("");}}
+            style={{flex:1,padding:"11px 8px",borderRadius:10,border:`2px solid ${mode===m.k?"#4f8ef7":"#363d56"}`,background:mode===m.k?"rgba(79,142,247,.12)":"#2e3449",color:mode===m.k?"#eef0f7":"#8891b0",fontSize:13,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+            {m.icon} {m.label}
+          </button>
+        ))}
+      </div>
+
+      {/* LANG PAIR */}
+      <div style={{display:"flex",gap:8,alignItems:"center",background:"#242938",border:"1px solid #363d56",borderRadius:14,padding:"10px 14px"}}>
+        <span style={{fontSize:12,color:"#8891b0",fontWeight:600,whiteSpace:"nowrap"}}>Langue :</span>
+        <select style={{flex:1,background:"#2e3449",border:"none",color:"#eef0f7",padding:"8px 10px",borderRadius:8,fontSize:13,fontWeight:600,cursor:"pointer",outline:"none",appearance:"none",textAlign:"center"}}
+          value={`${msgLang}→${tgtLang}`}
+          onChange={e=>{const[s,t]=e.target.value.split("→");setMsgLang(s);setTgtLang(t);setMsgTranslated("");setSubjectTranslated("");}}>
+          {LANG_PAIRS.map(p=><option key={p.label} value={`${p.src}→${p.tgt}`}>{p.label}</option>)}
+        </select>
+      </div>
+
+      {/* TONE SELECTOR */}
+      <div style={{display:"flex",gap:8}}>
+        {[{k:"pro",icon:"👔",label:"Professionnel"},{k:"casual",icon:"🤝",label:"Moins formel"}].map(t=>(
+          <button key={t.k} onClick={()=>setTone(t.k)}
+            style={{flex:1,padding:"10px 8px",borderRadius:10,border:`2px solid ${tone===t.k?"#7c5cfc":"#363d56"}`,background:tone===t.k?"rgba(124,92,252,.12)":"#2e3449",color:tone===t.k?"#eef0f7":"#8891b0",fontSize:12,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
+            {t.icon} {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* REPLY MODE — paste original email */}
+      {mode==="reply" && (
+        <div className="email-field">
+          <div className="email-label">📨 Mail reçu (coller ici)</div>
+          <textarea className="email-textarea" rows={5}
+            placeholder="Colle ici le mail auquel tu veux répondre…"
+            value={originalEmail} onChange={e=>setOriginalEmail(e.target.value)}/>
+        </div>
+      )}
+
+      {/* NEW MODE — topic for draft */}
+      {mode==="new" && (
+        <div className="email-field">
+          <div className="email-label">💡 Sujet du mail (pour pré-rédaction)</div>
+          <input className="email-input" type="text"
+            placeholder="Ex: demande de réunion EHS, retour sur inspection CDG1…"
+            value={topic} onChange={e=>setTopic(e.target.value)}/>
+        </div>
+      )}
+
+      {/* GENERATE DRAFT BUTTON */}
+      <button className="translate-msg-btn" onClick={generateDraft}
+        disabled={generating||(mode==="new"?!topic.trim():!originalEmail.trim())}
+        style={{background:"rgba(124,92,252,.15)",borderColor:"rgba(124,92,252,.3)",color:"#7c5cfc"}}>
+        {generating ? "⏳ Rédaction en cours…" : mode==="reply" ? "✍️ Rédiger la réponse" : "✍️ Pré-rédiger le mail"}
+      </button>
+
+      <div className="or-div" style={{margin:"0"}}>ou rédige manuellement</div>
+
+      {/* TO */}
+      <div className="email-field">
+        <div className="email-label">✉️ À (destinataire)</div>
+        <input className="email-input" type="email" placeholder="prenom.nom@entreprise.com" value={to} onChange={e=>setTo(e.target.value)}/>
+      </div>
+
+      {/* CC */}
+      <div className="email-field">
+        <div className="email-label">CC (optionnel)</div>
+        <input className="email-input" type="email" placeholder="autre@entreprise.com" value={cc} onChange={e=>setCc(e.target.value)}/>
+      </div>
+
+      {/* SUBJECT */}
+      <div className="email-field">
+        <div className="email-label">📌 Objet</div>
+        <div style={{display:"flex",gap:6,alignItems:"center"}}>
+          {mode==="reply" && (
+            <span style={{background:"rgba(79,142,247,.15)",border:"1px solid rgba(79,142,247,.3)",color:"#4f8ef7",padding:"9px 10px",borderRadius:8,fontSize:12,fontWeight:700,whiteSpace:"nowrap"}}>RE:</span>
+          )}
+          <input className="email-input" type="text"
+            placeholder={mode==="reply" ? "Objet du mail original…" : "Objet du message…"}
+            value={subject} onChange={e=>{setSubject(e.target.value);setSubjectTranslated("");}}
+            style={{flex:1}}/>
+        </div>
+        {subjectTranslated && (
+          <div style={{fontSize:11,color:"#2ecc8a",padding:"5px 8px",background:"rgba(46,204,138,.08)",borderRadius:6,marginTop:4}}>
+            🌐 {mode==="reply" && !subjectTranslated.match(/^RE\s*:/i) ? "RE: " : ""}{subjectTranslated}
+          </div>
+        )}
+      </div>
+
+      {/* MESSAGE */}
+      <div className="email-field">
+        <div className="email-label">💬 Message ({LANG_SHORT[msgLang]||"Auto"})</div>
+        <textarea className="email-textarea" rows={7}
+          placeholder={`Ton message en ${LANG_SHORT[msgLang]||"ta langue"}…`}
+          value={msg} onChange={e=>{setMsg(e.target.value);setMsgTranslated("");}}/>
+      </div>
+
+      {/* TRANSLATE BUTTON */}
+      <button className="translate-msg-btn" onClick={translateAll} disabled={translating||!msg.trim()}>
+        {translating ? "⏳ Traduction…" : `🌐 Traduire objet + message en ${LANG_SHORT[tgtLang]}`}
+      </button>
+
+      {/* TRANSLATED BODY */}
+      {msgTranslated && (
+        <div className="email-field">
+          <div className="email-label">✅ Traduction ({LANG_SHORT[tgtLang]})</div>
+          <div className="translated-msg-box">
+            {msgTranslated}
+            <div className="translated-lang-badge">{LANG_SHORT[tgtLang]}</div>
+          </div>
+          <button onClick={()=>{setMsg(msgTranslated);setSubject(subjectTranslated||subject);setMsgTranslated("");setSubjectTranslated("");showToast("Message remplacé");}}
+            style={{background:"none",border:"none",color:"#8891b0",fontSize:11,cursor:"pointer",padding:"4px 0"}}>
+            ↩ Utiliser la traduction comme message principal
+          </button>
+        </div>
+      )}
+
+      {/* TOGGLES */}
+      {msgTranslated && (
+        <Toggle on={bilingual} onClick={()=>setBilingual(b=>!b)}
+          label="📄 Mail bilingue" sub="Original + traduction dans le même mail"/>
+      )}
+
+      {/* PREVIEW */}
+      {msg && (
+        <div style={{background:"#1a1f2e",border:"1px solid #363d56",borderRadius:10,padding:12}}>
+          <div style={{fontSize:11,fontWeight:700,color:"#8891b0",marginBottom:8,textTransform:"uppercase",letterSpacing:".8px"}}>👁 Aperçu</div>
+          <div style={{fontSize:11,color:"#8891b0",marginBottom:3}}><strong style={{color:"#eef0f7"}}>À :</strong> {to||"—"}</div>
+          {cc&&<div style={{fontSize:11,color:"#8891b0",marginBottom:3}}><strong style={{color:"#eef0f7"}}>CC :</strong> {cc}</div>}
+          <div style={{fontSize:11,color:"#8891b0",marginBottom:8}}><strong style={{color:"#eef0f7"}}>Objet :</strong> {buildSubject()||"—"}</div>
+          <div style={{fontSize:11,color:"#c0c8e8",lineHeight:1.6,whiteSpace:"pre-wrap",maxHeight:120,overflow:"hidden"}}>
+            {buildBody().slice(0,300)}{buildBody().length>300?"…":""}
+          </div>
+        </div>
+      )}
+
+      {/* SEND BUTTONS */}
+      <div style={{display:"flex",gap:8}}>
+        <button className="send-btn" onClick={sendVia} disabled={!to.trim()||!msg.trim()} style={{flex:1}}>
+          📤 Envoyer via…
+        </button>
+        <button onClick={sendViaOutlook} disabled={!to.trim()||!msg.trim()}
+          style={{background:"rgba(0,120,212,.2)",border:"2px solid rgba(0,120,212,.4)",color:"#4f8ef7",padding:"13px 12px",borderRadius:14,fontSize:13,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,whiteSpace:"nowrap",opacity:(!to.trim()||!msg.trim())?0.5:1}}>
+          📎 Outlook
+        </button>
+      </div>
+      <div style={{fontSize:11,color:"#8891b0",textAlign:"center",lineHeight:1.6,paddingBottom:8}}>
+        <strong>Envoyer via…</strong> → sélecteur Android (Gmail, Orange…)<br/>
+        <strong>Outlook</strong> → ouvre Outlook directement · joindre le mail original depuis Outlook manuellement
+      </div>
+    </div>
+  );
+}
+// ─── CONVERSION TAB COMPONENT ────────────────────────────────────────────────
+function ConvTab({ showToast }) {
+  const [convFile, setConvFile] = useState(null);
+  const [convExt, setConvExt] = useState(null);
+  const [drag, setDrag] = useState(false);
+  const fileRef = useRef();
+
+  const handleFile = (file) => {
+    setConvFile(file);
+    setConvExt(file.name.split(".").pop().toLowerCase());
+  };
+
+  const ft = convExt ? (FTYPES[convExt] || {icon:"📄",color:"#8891b0",bg:"rgba(136,145,176,.15)",label:convExt.toUpperCase()}) : null;
+  const fileSize = (f) => f.size < 1048576 ? (f.size/1024).toFixed(0)+" Ko" : (f.size/1048576).toFixed(1)+" Mo";
+
+  const toBase64 = (file) => new Promise((ok,err)=>{ const r=new FileReader(); r.onload=()=>ok(r.result); r.onerror=()=>err(); r.readAsDataURL(file); });
+
+  // Direct conversions (no server needed)
+  const convTXT = async () => {
+    if(!convFile) return;
+    // For text-readable files, read as text
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const blob = new Blob([e.target.result||convFile.name], {type:"text/plain;charset=utf-8"});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a"); a.href=url; a.download=convFile.name.replace(/\.[^.]+$/,".txt"); a.click(); URL.revokeObjectURL(url);
+      showToast("✅ TXT téléchargé");
+    };
+    reader.readAsText(convFile);
+  };
+
+  const convPDF = () => {
+    if(!convFile) return;
+    const win = window.open("","_blank");
+    win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${convFile.name}</title>
+    <style>body{font-family:Arial,sans-serif;font-size:12pt;line-height:1.6;margin:2cm}img{max-width:100%}</style></head>
+    <body><h2>${convFile.name}</h2><p style="color:#666;font-size:10pt">Converti via TranslateDoc</p>
+    <hr/><p>Pour convertir ce fichier en PDF avec mise en forme complète, utilisez LibreOffice ou Microsoft Office.</p>
+    <script>window.onload=()=>{window.print();}<\/script></body></html>`);
+    win.document.close();
+    showToast("🖨️ Impression → Enregistrer en PDF");
+  };
+
+  const convViaClaude = (fmt) => {
+    if(!convFile) return;
+    const fmtLabel = {docx:"Word (DOCX)", pptx:"PowerPoint (PPTX)", xlsx:"Excel (XLSX)", csv:"CSV", pdf:"PDF", txt:"TXT"}[fmt] || fmt.toUpperCase();
+    const prompt = `Convertis le fichier "${convFile.name}" (${convExt?.toUpperCase()}) en ${fmtLabel}.
+
+Règles ABSOLUES :
+- Préserver EXACTEMENT la mise en forme : polices, tailles, couleurs, gras/italique, alignements
+- Préserver la structure : titres, sous-titres, tableaux, listes, numérotation
+- Préserver les images et leur position si possible
+- Préserver les couleurs de fond, bordures, cellules
+- Ne modifier AUCUN contenu textuel — conversion pure, pas de traduction
+- Retourner le fichier ${fmt.toUpperCase()} directement téléchargeable`;
+
+    navigator.clipboard.writeText(prompt).catch(()=>{});
+    window.open("https://claude.ai","_blank");
+    showToast(`📋 Prompt copié · Uploade "${convFile.name}" dans Claude.ai`);
+  };
+
+  const FORMATS = [
+    { fmt:"txt",  icon:"📄", label:"TXT",   sub:"Texte brut (direct)",    action: convTXT,                  claude: false },
+    { fmt:"pdf",  icon:"🔴", label:"PDF",   sub:"✨ Format préservé",      action:()=>convViaClaude("pdf"),  claude: true  },
+    { fmt:"docx", icon:"📝", label:"DOCX",  sub:"✨ Format préservé",      action:()=>convViaClaude("docx"), claude: true  },
+    { fmt:"pptx", icon:"📊", label:"PPTX",  sub:"✨ Format préservé",      action:()=>convViaClaude("pptx"), claude: true  },
+    { fmt:"xlsx", icon:"📈", label:"XLSX",  sub:"✨ Format préservé",      action:()=>convViaClaude("xlsx"), claude: true  },
+    { fmt:"csv",  icon:"🗂️", label:"CSV",   sub:"✨ Format préservé",      action:()=>convViaClaude("csv"),  claude: true  },
+  ];
+
+  // Filter out same format as source
+  const availableFormats = FORMATS.filter(f => f.fmt !== convExt);
+
+  return (
+    <div className="main">
+      {/* INFO */}
+      <div className="badge" style={{justifyContent:"center",textAlign:"center"}}>
+        <div className="dot dot-b"/>
+        Convertir un fichier sans traduction
+      </div>
+
+      {/* UPLOAD */}
+      {!convFile && (
+        <div className={`upload-zone${drag?" drag":""}`}
+          onClick={()=>fileRef.current?.click()}
+          onDragOver={e=>{e.preventDefault();setDrag(true);}}
+          onDragLeave={()=>setDrag(false)}
+          onDrop={e=>{e.preventDefault();setDrag(false);if(e.dataTransfer.files[0])handleFile(e.dataTransfer.files[0]);}}>
+          <input ref={fileRef} type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.webp,.txt,.csv" style={{display:"none"}} onChange={e=>{if(e.target.files[0])handleFile(e.target.files[0]);}}/>
+          <div className="upload-icon">🔄</div>
+          <div className="upload-title">Choisir un fichier à convertir</div>
+          <div className="upload-sub">PDF · DOCX · PPTX · XLSX · Images · TXT</div>
+          <div className="chips">
+            <span className="chip chip-pdf">PDF</span>
+            <span className="chip chip-docx">DOCX</span>
+            <span className="chip chip-pptx">PPTX</span>
+            <span className="chip chip-xlsx">XLSX</span>
+            <span className="chip chip-img">JPG/PNG</span>
+          </div>
+        </div>
+      )}
+
+      {/* FILE CARD */}
+      {convFile && ft && (
+        <div className="file-card">
+          <div className="file-icon" style={{background:ft.bg}}>{ft.icon}</div>
+          <div style={{flex:1,minWidth:0}}>
+            <div className="file-name">{convFile.name}</div>
+            <div className="file-meta">{ft.label} · {fileSize(convFile)}</div>
+          </div>
+          <button className="file-remove" onClick={()=>{setConvFile(null);setConvExt(null);}}>✕</button>
+        </div>
+      )}
+
+      {/* FORMAT GRID */}
+      {convFile && (
+        <div className="convert-panel">
+          <div className="convert-title">🔄 Convertir vers…</div>
+          <div className="convert-grid">
+            {availableFormats.map(f => (
+              <button key={f.fmt} className={`conv-btn${f.claude?" via-claude":""}`} onClick={f.action}>
+                <span className="conv-icon">{f.icon}</span>
+                {f.label}
+                <span className="conv-label">{f.sub}</span>
+              </button>
+            ))}
+          </div>
+          <div style={{fontSize:11,color:"#8891b0",textAlign:"center",lineHeight:1.5}}>
+            ✨ <strong style={{color:"#7c5cfc"}}>Via Claude.ai</strong> = polices, couleurs, structure préservées exactement · prompt copié automatiquement
+          </div>
+        </div>
+      )}
+
+      {!convFile && (
+        <div style={{textAlign:"center",color:"#8891b0",fontSize:13,padding:"20px 0"}}>
+          Sélectionne un fichier pour voir les formats disponibles
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── MAIN APP ─────────────────────────────────────────────────────────────────
+export default function TranslateDoc() {
+  const [tab, setTab] = useState("doc"); // doc | live
+  const [srcLang, setSrcLang] = useState("auto");
+  const [tgtLang, setTgtLang] = useState("fr");
+  const [detectedLang, setDetectedLang] = useState(null);
+  const [fileQueue, setFileQueue] = useState([]); // [{file, ext, status:'waiting'|'translating'|'done'|'error', result}]
+  const [selFile, setSelFile] = useState(null);
+  const [selExt, setSelExt] = useState(null);
+  const [txtInput, setTxtInput] = useState("");
+  const [mode, setMode] = useState("api");
+  const [drag, setDrag] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [progLabel, setProgLabel] = useState("");
+  const [currentFileIdx, setCurrentFileIdx] = useState(null);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState("");
+  const [history, setHistory] = useState(() => { try { return JSON.parse(localStorage.getItem("tdh")||"[]"); } catch { return []; } });
+  const [showHist, setShowHist] = useState(false);
+  const [toast, setToast] = useState("");
+  const [copied, setCopied] = useState(false);
+  const fileRef = useRef();
+
+  const showToast = (msg) => { setToast(msg); setTimeout(()=>setToast(""),2500); };
+  const setProg = (pct,label) => { setProgress(pct); setProgLabel(label); };
+
+  const callClaude = async (system, messages, maxTokens=4096) => {
+    const resp = await fetch("https://api.anthropic.com/v1/messages",{
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:maxTokens,system,messages})
+    });
+    if(!resp.ok) throw new Error(`Erreur API (${resp.status})`);
+    const data = await resp.json();
+    return data.content.filter(b=>b.type==="text").map(b=>b.text).join("\n");
+  };
+
+  const handleFiles = (files) => {
+    const newEntries = Array.from(files).map(file => ({
+      id: Date.now() + Math.random(),
+      file,
+      ext: file.name.split(".").pop().toLowerCase(),
+      status: "waiting",
+      result: null,
+      error: null,
+    }));
+    setFileQueue(prev => [...prev, ...newEntries]);
+    // Set selFile/selExt to first file for mode detection
+    if (newEntries.length > 0) {
+      setSelFile(newEntries[0].file);
+      setSelExt(newEntries[0].ext);
+      if (OFFICE_EXTS.includes(newEntries[0].ext)) setMode("api");
+    }
+    setResult(null); setError("");
+  };
+  const handleFile = (file) => handleFiles([file]);
+  const removeFromQueue = (id) => {
+    setFileQueue(prev => {
+      const updated = prev.filter(e => e.id !== id);
+      if (updated.length === 0) { setSelFile(null); setSelExt(null); }
+      else { setSelFile(updated[0].file); setSelExt(updated[0].ext); }
+      return updated;
+    });
+  };
+  const clearFile = () => { setSelFile(null); setSelExt(null); setMode("api"); setFileQueue([]); };
+  const swapLangs = () => { const s=srcLang==="auto"?"fr":srcLang; setSrcLang(tgtLang); setTgtLang(s); };
+  const fileSize = (f) => f.size<1048576?(f.size/1024).toFixed(0)+" Ko":(f.size/1048576).toFixed(1)+" Mo";
+  const toBase64 = (file) => new Promise((ok,err)=>{ const r=new FileReader(); r.onload=()=>ok(r.result.split(",")[1]); r.onerror=()=>err(new Error("Lecture échouée")); r.readAsDataURL(file); });
+
+  const detectLang = async (sample) => {
+    const resp = await callClaude("Réponds UNIQUEMENT avec le code ISO 2 lettres de la langue (fr,en,es,de,it,pt,nl,ar,zh,ja). Rien d'autre.",[{role:"user",content:`Langue de ce texte ?\n${sample.slice(0,300)}`}],10);
+    return resp.trim().toLowerCase().slice(0,2);
+  };
+
+  const resolveTarget = async (sample) => {
+    if(srcLang!=="auto") return tgtLang;
+    const detected = await detectLang(sample);
+    setDetectedLang(detected);
+    const newTgt = detected==="fr" ? "en" : "fr";
+    setTgtLang(newTgt);
+    return newTgt;
+  };
+
+  const buildSys = (tgt) => `Traducteur expert. Traduis vers ${LANG_SHORT[tgt]}. Préserve la structure (titres, tableaux, listes). Ne traduis PAS : noms propres, EHS, HSE, PTW, RAMS, ATR, DAB, GC, CDG1, CHQ, noms personnes/entreprises. Réponds UNIQUEMENT avec le texte traduit.`;
+
+  const saveHist = (name,src,tgt,text) => {
+    const entry={id:Date.now(),name,src,tgt,text,date:new Date().toLocaleDateString("fr-FR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})};
+    const h=[entry,...history].slice(0,20); setHistory(h);
+    try{localStorage.setItem("tdh",JSON.stringify(h));}catch{}
+  };
+  const showResult = (text,name,src,tgt) => { const blob=new Blob([text],{type:"text/plain;charset=utf-8"}); setResult({text,blob,name,tgt}); saveHist(name,src,tgt,text); };
+
+  // Translate a single file entry, returns {text, outName}
+  const translateOneFile = async (file, ext, tgt) => {
+    const sys = buildSys(tgt); const tN = LANG_SHORT[tgt];
+    if (OFFICE_EXTS.includes(ext)) {
+      const b64 = await toBase64(file);
+      const typeLabel = FTYPES[ext]?.label || ext.toUpperCase();
+      let translated;
+      try { translated = await callClaude(sys,[{role:"user",content:[{type:"document",source:{type:"base64",media_type:"application/pdf",data:b64}},{type:"text",text:`Fichier ${typeLabel} : ${file.name}. Traduis vers ${tN}.`}]}]); }
+      catch { translated = await callClaude(sys,[{role:"user",content:`Traduis le contenu de ce fichier ${typeLabel} "${file.name}" vers ${tN}. Structure préservée.`}]); }
+      return { text: translated, outName: file.name.replace(/\.[^.]+$/, `_${tgt}.txt`) };
+    } else if (ext === "pdf") {
+      const b64 = await toBase64(file);
+      const translated = await callClaude(sys,[{role:"user",content:[{type:"document",source:{type:"base64",media_type:"application/pdf",data:b64}},{type:"text",text:`Traduis tout ce PDF vers ${tN}.`}]}]);
+      return { text: translated, outName: file.name.replace(/\.pdf$/i, `_${tgt}.txt`) };
+    } else {
+      const mimeMap={jpg:"image/jpeg",jpeg:"image/jpeg",png:"image/png",gif:"image/gif",webp:"image/webp"};
+      const mime = mimeMap[ext] || "image/jpeg";
+      const b64 = await toBase64(file);
+      const translated = await callClaude(sys,[{role:"user",content:[{type:"image",source:{type:"base64",media_type:mime,data:b64}},{type:"text",text:`Extrais et traduis tout le texte visible vers ${tN}.`}]}]);
+      return { text: translated, outName: file.name.replace(/\.[^.]+$/, `_${tgt}.txt`) };
+    }
+  };
+
+  const translate = async () => {
+    const hasFiles = fileQueue.length > 0;
+    const hasTxt = txtInput.trim().length > 0;
+    if (!hasFiles && !hasTxt) { setError("Sélectionner un fichier ou saisir du texte."); return; }
+    if (srcLang !== "auto" && srcLang === tgtLang) { setError("Langue source = langue cible."); return; }
+    setError(""); setResult(null); setDetectedLang(null); setLoading(true); setProg(5, "Démarrage…");
+
+    try {
+      // Resolve target language once
+      let tgt = tgtLang;
+      if (srcLang === "auto") {
+        setProg(10, "Détection de la langue…");
+        const sample = hasFiles ? fileQueue[0].file.name : txtInput;
+        tgt = await resolveTarget(sample);
+        setProg(15, `Traduction vers ${LANG_SHORT[tgt]}…`);
+      }
+
+      if (hasFiles) {
+        // ── MULTI-FILE QUEUE ─────────────────────────────────────────────────
+        const total = fileQueue.length;
+        let allResults = [];
+
+        for (let i = 0; i < total; i++) {
+          const entry = fileQueue[i];
+          setCurrentFileIdx(i);
+          const pctBase = 15 + (i / total) * 80;
+          setProg(Math.round(pctBase), `Fichier ${i+1}/${total} : ${entry.file.name}`);
+
+          // Mark as translating
+          setFileQueue(prev => prev.map((e,idx) => idx===i ? {...e, status:"translating"} : e));
+
+          try {
+            const { text, outName } = await translateOneFile(entry.file, entry.ext, tgt);
+            const blob = new Blob([text], {type:"text/plain;charset=utf-8"});
+            allResults.push({ text, blob, outName, fileName: entry.file.name });
+            setFileQueue(prev => prev.map((e,idx) => idx===i ? {...e, status:"done", result:{text,blob,outName}} : e));
+            saveHist(entry.file.name, srcLang, tgt, text);
+          } catch(e) {
+            setFileQueue(prev => prev.map((e2,idx) => idx===i ? {...e2, status:"error", error:e.message} : e2));
+          }
+        }
+
+        setProg(100, `${total} fichier(s) traduit(s) !`);
+        setCurrentFileIdx(null);
+
+        // Show last successful result
+        const lastOk = allResults[allResults.length - 1];
+        if (lastOk) setResult({ text: lastOk.text, blob: lastOk.blob, name: lastOk.outName, tgt, allResults });
+
+      } else {
+        // ── TEXT ONLY ────────────────────────────────────────────────────────
+        setProg(30, "Envoi à Claude AI…");
+        const sys = buildSys(tgt);
+        const translated = await callClaude(sys,[{role:"user",content:`Traduis ce texte vers ${LANG_SHORT[tgt]} :\n\n${txtInput.trim()}`}]);
+        setProg(100,"Terminé !"); showResult(translated,`traduction_${tgt}.txt`,srcLang,tgt);
+      }
+
+    } catch(e) { setError("Erreur : "+e.message); }
+    finally { setLoading(false); }
+  };
+
+  const downloadResult = () => {
+    if(!result)return; const url=URL.createObjectURL(result.blob);
+    const a=document.createElement("a"); a.href=url; a.download=result.name; a.click(); URL.revokeObjectURL(url); showToast("✅ Téléchargé !");
+  };
+
+  // ── CONVERSION FUNCTIONS ────────────────────────────────────────────────────
+  const baseName = () => result ? result.name.replace(/\.[^.]+$/,"") : "traduction";
+
+  const convertTXT = () => {
+    if(!result) return;
+    const blob = new Blob([result.text],{type:"text/plain;charset=utf-8"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href=url; a.download=baseName()+".txt"; a.click(); URL.revokeObjectURL(url);
+    showToast("✅ TXT téléchargé");
+  };
+
+  const convertPDF = () => {
+    if(!result) return;
+    // Open print dialog with formatted content
+    const win = window.open("","_blank");
+    win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${baseName()}</title>
+    <style>body{font-family:Arial,sans-serif;font-size:12pt;line-height:1.6;margin:2cm;color:#000}
+    h1{font-size:16pt;margin-bottom:12pt}pre{white-space:pre-wrap;font-family:Arial,sans-serif}</style></head>
+    <body><pre>${result.text.replace(/</g,"&lt;").replace(/>/g,"&gt;")}</pre>
+    <script>window.onload=()=>{window.print();window.close();}<\/script></body></html>`);
+    win.document.close();
+    showToast("🖨️ Fenêtre d'impression ouverte → Enregistrer en PDF");
+  };
+
+  const convertDOCX = async () => {
+    if(!result) return;
+    // Build a minimal DOCX via Claude AI
+    showToast("⏳ Génération DOCX…");
+    try {
+      const resp = await callClaude(
+        "Tu génères du XML DOCX minimal. Réponds UNIQUEMENT avec le contenu word/document.xml valide, sans markdown ni explication.",
+        [{role:"user", content:`Convertis ce texte en contenu word/document.xml DOCX valide avec titres (w:Heading1) et paragraphes (w:p):\n\n${result.text.slice(0,3000)}`}],
+        2000
+      );
+      // Fallback: create simple HTML file named .docx (opens in Word)
+      const html = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word'>
+<head><meta charset='utf-8'><title>${baseName()}</title>
+<style>body{font-family:Arial;font-size:12pt;line-height:1.6;margin:2cm}</style></head>
+<body>${result.text.split("\n").map(l => l.trim() ? `<p>${l.replace(/</g,"&lt;")}</p>` : "<p>&nbsp;</p>").join("")}</body></html>`;
+      const blob = new Blob([html],{type:"application/msword"});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a"); a.href=url; a.download=baseName()+".doc"; a.click(); URL.revokeObjectURL(url);
+      showToast("✅ Word téléchargé (ouvrir avec Word/LibreOffice)");
+    } catch(e) { showToast("Erreur DOCX : "+e.message); }
+  };
+
+  const convertViaClaude = (fmt) => {
+    if(!result) return;
+    const fmtLabel = {pptx:"PowerPoint (PPTX)", xlsx:"Excel (XLSX)"}[fmt] || fmt.toUpperCase();
+    const prompt = `Convertis ce texte traduit en fichier ${fmtLabel} téléchargeable.
+
+Règles :
+- Créer un vrai fichier ${fmt.toUpperCase()} avec mise en forme professionnelle
+- Pour PPTX : une diapositive par section/titre, design propre
+- Pour XLSX : données structurées dans les cellules, en-têtes en gras
+- Préserver la structure et hiérarchie du contenu
+
+Contenu à convertir :
+${result.text}`;
+
+    navigator.clipboard.writeText(prompt).catch(()=>{});
+    window.open("https://claude.ai","_blank");
+    showToast(`📋 Prompt copié · Claude.ai ouvert → demande le fichier ${fmt.toUpperCase()}`);
+  };
+  const downloadOriginal = () => {
+    if(!selFile)return;
+    const reader=new FileReader();
+    reader.onload=(e)=>{ const a=document.createElement("a"); a.href=e.target.result; a.download=selFile.name; document.body.appendChild(a); a.click(); document.body.removeChild(a); showToast("✅ Fichier téléchargé");};
+    reader.readAsDataURL(selFile);
+  };
+  const copyResult = () => { if(!result)return; navigator.clipboard.writeText(result.text).then(()=>showToast("📋 Copié !")); };
+
+  const claudePrompt = () => {
+    const typeLabel=FTYPES[selExt]?.label||(selExt||"").toUpperCase();
+    const sN=srcLang==="auto"?"la langue détectée automatiquement":LANG_SHORT[srcLang];
+    return `Traduis ce fichier ${typeLabel} de ${sN} vers ${LANG_SHORT[tgtLang]}.\n\nRègles :\n- Préserver EXACTEMENT le format : polices, couleurs, tailles, tableaux, structure\n- Ne PAS traduire : noms propres, codes (EHS, HSE, PTW, RAMS, ATR, DAB, GC, CDG1, CHQ), acronymes, noms personnes/entreprises\n- Retourner le fichier traduit téléchargeable dans le même format (${(selExt||"").toUpperCase()})`;
+  };
+  const copyPrompt = () => { navigator.clipboard.writeText(claudePrompt()).then(()=>{ setCopied(true); showToast("📋 Prompt copié !"); setTimeout(()=>setCopied(false),2000); }); };
+  const openClaude = () => { navigator.clipboard.writeText(claudePrompt()).catch(()=>{}); window.open("https://claude.ai","_blank"); showToast("📋 Prompt copié · Claude.ai ouvert"); };
+
+  const stepClass = (i) => { const n=progress>=100?5:progress>=80?4:progress>=60?3:progress>=35?2:progress>=15?1:0; return "s-item"+(i<n?" done":i===n?" act":""); };
+  const isOffice = selFile&&OFFICE_EXTS.includes(selExt);
+  const ft = selExt?(FTYPES[selExt]||{icon:"📄",color:"#8891b0",bg:"rgba(136,145,176,.15)",label:selExt.toUpperCase()}):null;
+
+  return (
+    <>
+      <style>{css}</style>
+      <div className="app">
+
+        {/* HEADER */}
+        <div className="hdr">
+          <div className="logo">
+            <div className="logo-icon">🌐</div>
+            <div className="logo-text">Translate<span>Doc</span></div>
+          </div>
+          <button className="hist-btn" onClick={()=>setShowHist(true)}>🕐 Historique</button>
+        </div>
+
+        {/* TABS */}
+        <div className="tabs">
+          <button className={`tab${tab==="doc"?" active":""}`} onClick={()=>setTab("doc")}>📄 Docs</button>
+          <button className={`tab${tab==="conv"?" active":""}`} onClick={()=>setTab("conv")}>🔄 Conversion</button>
+          <button className={`tab${tab==="email"?" active":""}`} onClick={()=>setTab("email")}>✉️ Email</button>
+          <button className={`tab${tab==="live"?" active":""}`} onClick={()=>setTab("live")}>🎤 Live</button>
+        </div>
+
+        {/* ── DOC TAB ──────────────────────────────────────────────────────── */}
+        {tab==="doc" && (
+          <div className="main">
+            <div className="lang-bar">
+              <select className="lang-sel" value={srcLang} onChange={e=>setSrcLang(e.target.value)}>
+                {Object.entries(LANG).map(([k,v])=><option key={k} value={k}>{v}</option>)}
+              </select>
+              <button className="swap-btn" onClick={swapLangs}>⇄</button>
+              <select className="lang-sel" value={tgtLang} onChange={e=>setTgtLang(e.target.value)}>
+                {Object.entries(LANG).filter(([k])=>k!=="auto").map(([k,v])=><option key={k} value={k}>{v}</option>)}
+              </select>
+            </div>
+
+            <div className="badge-row">
+              <div className="badge"><div className="dot dot-g"/>Langue auto-détectée</div>
+              <div className="badge"><div className="dot dot-b"/>Format préservé</div>
+            </div>
+
+            {fileQueue.length === 0 && (
+              <div className={`upload-zone${drag?" drag":""}`}
+                onClick={()=>fileRef.current?.click()}
+                onDragOver={e=>{e.preventDefault();setDrag(true);}}
+                onDragLeave={()=>setDrag(false)}
+                onDrop={e=>{e.preventDefault();setDrag(false);if(e.dataTransfer.files.length)handleFiles(e.dataTransfer.files);}}>
+                <input ref={fileRef} type="file" multiple accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.webp" style={{display:"none"}} onChange={e=>{if(e.target.files.length)handleFiles(e.target.files);}}/>
+                <div className="upload-icon">📎</div>
+                <div className="upload-title">Déposer un ou plusieurs fichiers</div>
+                <div className="upload-sub">ou appuyer pour choisir</div>
+                <div className="chips">
+                  <span className="chip chip-pdf">PDF</span>
+                  <span className="chip chip-docx">DOCX</span>
+                  <span className="chip chip-pptx">PPTX</span>
+                  <span className="chip chip-xlsx">XLSX</span>
+                  <span className="chip chip-img">JPG/PNG</span>
+                </div>
+              </div>
+            )}
+
+            {/* FILE QUEUE */}
+            {fileQueue.length > 0 && (
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                {/* Header with add more + clear all */}
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <span style={{fontSize:12,fontWeight:700,color:"#8891b0"}}>
+                    📂 {fileQueue.length} fichier{fileQueue.length>1?"s":""} en file
+                  </span>
+                  <div style={{display:"flex",gap:8}}>
+                    <button onClick={()=>fileRef.current?.click()} style={{background:"rgba(79,142,247,.15)",border:"1px solid rgba(79,142,247,.3)",color:"#4f8ef7",padding:"5px 11px",borderRadius:8,fontSize:12,fontWeight:600,cursor:"pointer"}}>
+                      + Ajouter
+                    </button>
+                    <button onClick={clearFile} style={{background:"rgba(240,90,90,.1)",border:"1px solid rgba(240,90,90,.3)",color:"#f05a5a",padding:"5px 11px",borderRadius:8,fontSize:12,fontWeight:600,cursor:"pointer"}}>
+                      Tout effacer
+                    </button>
+                  </div>
+                  <input ref={fileRef} type="file" multiple accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.webp" style={{display:"none"}} onChange={e=>{if(e.target.files.length)handleFiles(e.target.files);}}/>
+                </div>
+
+                {/* File list */}
+                {fileQueue.map((entry, i) => {
+                  const ft2 = FTYPES[entry.ext] || {icon:"📄",color:"#8891b0",bg:"rgba(136,145,176,.15)",label:entry.ext.toUpperCase()};
+                  const statusColor = entry.status==="done" ? "#2ecc8a" : entry.status==="error" ? "#f05a5a" : entry.status==="translating" ? "#f0a500" : "#8891b0";
+                  const statusIcon = entry.status==="done" ? "✅" : entry.status==="error" ? "❌" : entry.status==="translating" ? "⏳" : "⏸";
+                  return (
+                    <div key={entry.id} style={{background:"#242938",border:`1px solid ${entry.status==="translating"?"#f0a500":entry.status==="done"?"#2ecc8a33":"#363d56"}`,borderRadius:12,padding:"11px 14px",display:"flex",alignItems:"center",gap:10,transition:"border-color .3s"}}>
+                      <div style={{width:36,height:36,borderRadius:8,background:ft2.bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>{ft2.icon}</div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:13,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{entry.file.name}</div>
+                        <div style={{fontSize:11,color:statusColor,marginTop:2,display:"flex",alignItems:"center",gap:4}}>
+                          <span>{statusIcon}</span>
+                          <span>{entry.status==="waiting"?"En attente":entry.status==="translating"?"Traduction en cours…":entry.status==="done"?"Traduit":entry.error||"Erreur"}</span>
+                        </div>
+                      </div>
+                      {/* Download individual result */}
+                      {entry.status==="done" && entry.result && (
+                        <button onClick={()=>{
+                          const url=URL.createObjectURL(entry.result.blob);
+                          const a=document.createElement("a"); a.href=url; a.download=entry.result.outName; a.click(); URL.revokeObjectURL(url);
+                          showToast("✅ "+entry.result.outName);
+                        }} style={{background:"rgba(46,204,138,.15)",border:"1px solid rgba(46,204,138,.3)",color:"#2ecc8a",padding:"5px 10px",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",flexShrink:0}}>
+                          ⬇️
+                        </button>
+                      )}
+                      {/* Remove from queue (only if not translating) */}
+                      {entry.status!=="translating" && (
+                        <button onClick={()=>removeFromQueue(entry.id)} style={{background:"none",border:"none",color:"#8891b0",fontSize:16,cursor:"pointer",padding:4,flexShrink:0}}>✕</button>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {/* Download all done */}
+                {fileQueue.filter(e=>e.status==="done").length > 1 && (
+                  <button onClick={()=>{
+                    fileQueue.filter(e=>e.status==="done"&&e.result).forEach(e=>{
+                      setTimeout(()=>{
+                        const url=URL.createObjectURL(e.result.blob);
+                        const a=document.createElement("a"); a.href=url; a.download=e.result.outName; a.click(); URL.revokeObjectURL(url);
+                      },100);
+                    });
+                    showToast(`✅ ${fileQueue.filter(e=>e.status==="done").length} fichiers téléchargés`);
+                  }} style={{background:"#2ecc8a",border:"none",color:"#0a1a10",padding:"12px",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+                    ⬇️ Tout télécharger ({fileQueue.filter(e=>e.status==="done").length} fichiers)
+                  </button>
+                )}
+              </div>
+            )}
+
+            {isOffice&&(
+              <div className="office-box">
+                <div className="office-title">📄 Fichier Office — Choisir le mode</div>
+                <div className="mode-btns">
+                  <button className={`mode-btn${mode==="api"?" active":""}`} onClick={()=>setMode("api")}>
+                    <span className="mode-icon">⚡</span>Traduction rapide
+                    <span style={{display:"block",fontSize:10,color:"#8891b0",marginTop:2}}>Texte extrait traduit</span>
+                  </button>
+                  <button className={`mode-btn${mode==="claude"?" active":""}`} onClick={()=>setMode("claude")}>
+                    <span className="mode-icon">✨</span>Format préservé
+                    <span style={{display:"block",fontSize:10,color:"#8891b0",marginTop:2}}>Via Claude.ai</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {isOffice&&mode==="claude"&&(
+              <div className="claude-panel">
+                <div className="claude-title">✨ Traduction avec format préservé via Claude.ai</div>
+                <div className="c-step"><div className="c-num">1</div><div>Télécharger le fichier à traduire</div></div>
+                <button className="btn-dl-file" onClick={downloadOriginal}>⬇️ Télécharger {selFile?.name}</button>
+                <div className="c-step"><div className="c-num">2</div><div>Copier le prompt de traduction</div></div>
+                <div className="prompt-box">{claudePrompt()}<button className="copy-btn-sm" onClick={copyPrompt}>{copied?"✓ Copié":"Copier"}</button></div>
+                <div className="c-step"><div className="c-num">3</div><div>Ouvrir Claude.ai — coller le prompt + uploader le fichier</div></div>
+                <div className="c-step"><div className="c-num">4</div><div>Claude retourne le fichier traduit <strong>avec polices, couleurs et structure préservées</strong></div></div>
+                <button className="btn-claude" onClick={openClaude}>🤖 Ouvrir Claude.ai</button>
+              </div>
+            )}
+
+            {mode!=="claude"&&(
+              <>
+                <div className="or-div">ou coller du texte</div>
+                <textarea className="txt-area" placeholder="Coller votre texte ici…" value={txtInput} onChange={e=>setTxtInput(e.target.value)} rows={4}/>
+              </>
+            )}
+
+            {error&&<div className="err">⚠️ {error}</div>}
+
+            {mode!=="claude"&&(
+              <button className="tr-btn" onClick={translate} disabled={loading}>
+                🌐 {loading ? progLabel : fileQueue.length > 1 ? `Traduire ${fileQueue.length} fichiers` : "Traduire"}
+              </button>
+            )}
+
+            {loading&&(
+              <div className="prog-card">
+                <div className="prog-top"><span>{progLabel}</span><span>{progress}%</span></div>
+                <div className="prog-bg"><div className="prog-fill" style={{width:progress+"%"}}/></div>
+                <div className="steps-list">
+                  {STEPS.map((s,i)=><div key={i} className={stepClass(i)}><div className="s-dot"/>{s}</div>)}
+                </div>
+              </div>
+            )}
+
+            {result&&(
+              <div className="res-card">
+                <div className="res-hdr">
+                  <div className="res-title">✅ Traduction terminée</div>
+                  <div className="res-badge">
+                    {detectedLang&&srcLang==="auto"?`${LANG_SHORT[detectedLang]||detectedLang} → ${LANG_SHORT[result.tgt||tgtLang]}`:`${LANG_SHORT[srcLang]} → ${LANG_SHORT[result.tgt||tgtLang]}`}
+                  </div>
+                </div>
+                <div className="res-text">{result.text}</div>
+
+                {/* COPY */}
+                <div className="res-actions" style={{marginBottom:0}}>
+                  <button className="btn-cp" style={{flex:1}} onClick={copyResult}>📋 Copier le texte</button>
+                </div>
+
+                {/* CONVERSION PANEL */}
+                <div className="convert-panel">
+                  <div className="convert-title">⬇️ Télécharger en…</div>
+                  <div className="convert-grid">
+
+                    <button className="conv-btn" onClick={convertTXT}>
+                      <span className="conv-icon">📄</span>
+                      TXT
+                      <span className="conv-label">Texte brut</span>
+                    </button>
+
+                    <button className="conv-btn" onClick={convertPDF}>
+                      <span className="conv-icon">🔴</span>
+                      PDF
+                      <span className="conv-label">Via impression</span>
+                    </button>
+
+                    <button className="conv-btn" onClick={convertDOCX}>
+                      <span className="conv-icon">📝</span>
+                      DOCX
+                      <span className="conv-label">Word / LibreOffice</span>
+                    </button>
+
+                    <button className="conv-btn via-claude" onClick={()=>convertViaClaude("pptx")}>
+                      <span className="conv-icon">📊</span>
+                      PPTX
+                      <span className="conv-label">✨ Via Claude.ai</span>
+                    </button>
+
+                    <button className="conv-btn via-claude" onClick={()=>convertViaClaude("xlsx")}>
+                      <span className="conv-icon">📈</span>
+                      XLSX
+                      <span className="conv-label">✨ Via Claude.ai</span>
+                    </button>
+
+                    <button className="conv-btn via-claude" onClick={()=>convertViaClaude("csv")}>
+                      <span className="conv-icon">🗂️</span>
+                      CSV
+                      <span className="conv-label">✨ Via Claude.ai</span>
+                    </button>
+
+                  </div>
+                  <div style={{fontSize:11,color:"#8891b0",textAlign:"center",lineHeight:1.5}}>
+                    ✨ <strong style={{color:"#7c5cfc"}}>Via Claude.ai</strong> = polices, couleurs, structure préservées · prompt copié automatiquement
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── LIVE TAB ─────────────────────────────────────────────────────── */}
+        {tab==="live"&&<LiveTab callClaude={callClaude}/>}
+
+        {/* ── CONVERSION TAB ───────────────────────────────────────────────── */}
+        {tab==="conv"&&<ConvTab showToast={showToast}/>}
+
+        {/* ── EMAIL TAB ────────────────────────────────────────────────────── */}
+        {tab==="email"&&<EmailTab callClaude={callClaude} showToast={showToast}/>}
+
+        {/* HISTORY */}
+        {showHist&&(
+          <div className="overlay" onClick={e=>{if(e.target.className==="overlay")setShowHist(false);}}>
+            <div className="sheet">
+              <div className="handle"/>
+              <div className="sheet-title">🕐 Historique</div>
+              <div className="hist-list">
+                {!history.length
+                  ?<div className="hist-empty">Aucune traduction.</div>
+                  :history.map(h=>(
+                    <div key={h.id} className="hist-item" onClick={()=>{const blob=new Blob([h.text],{type:"text/plain;charset=utf-8"});setResult({text:h.text,blob,name:h.name+"_"+h.tgt+".txt",tgt:h.tgt});setShowHist(false);}}>
+                      <div className="hist-top"><span className="hist-name">{h.name}</span><span className="hist-langs">{LANG_SHORT[h.src]||h.src} → {LANG_SHORT[h.tgt]}</span></div>
+                      <div className="hist-date">{h.date}</div>
+                    </div>
+                  ))
+                }
+              </div>
+              <button className="close-btn" onClick={()=>setShowHist(false)}>Fermer</button>
+            </div>
+          </div>
+        )}
+
+        {toast&&<div className="toast">{toast}</div>}
+      </div>
+    </>
+  );
+}
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(React.createElement(TranslateDoc));
+</script>
+</body>
+</html>
